@@ -140,31 +140,6 @@ Resources:
     Properties:
       VpcId: !Ref vpc
       InternetGatewayId: !Ref internetGateway
-  webServer1:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: !FindInMap ["RegionMap", !Ref AWS::Region, "AMI"]
-      InstanceType: !Ref InstanceType
-      KeyName: !Ref keyPair
-      NetworkInterfaces:
-      - DeleteOnTermination: true
-        Description: Primary network interface
-        DeviceIndex: '0'
-        AssociatePublicIpAddress: true
-        SubnetId: !Ref subnet1
-        GroupSet:
-        - !Ref securityGroupWebServer
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          yum update -y
-          yum install -y httpd.x86_64
-          systemctl start httpd.service
-          systemctl enable httpd.service
-          echo Hello World from $(hostname -f) > /var/www/html/index.html
-      Tags:
-      - Key: Name
-        Value: !Join ["-", [!Ref Environment, "webServer1"]]
   securityGroupWebServer:
     Type: AWS::EC2::SecurityGroup
     Properties: 
