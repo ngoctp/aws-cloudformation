@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Template to create VPC
+
+Parameters:
+  Environment:
+    Description: The enviroment type
+    Type: String
+    Default: Dev
+    AllowedValues:
+    - Dev
+    - Test
+    - Prod
+  keyPair:
+    Description: The key pair name
+    Type: String
+  InstanceType:
+    Description: EC2 instance t ype
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - "t1.micro"
+    - "t2.nano"
+    - "t2.micro"
+    - "t2.small"
+    - "t2.medium"
+    - "t2.large"
+    - "m1.small"
+    - "m1.medium"
+    - "m1.large"
+    - "m1.xlarge"
+    - "m2.xlarge"
+    - "m2.2xlarge"
+    - "m2.4xlarge"
+    - "m3.medium"
+    - "m3.large"
+    - "m3.xlarge"
+    - "m3.2xlarge"
+    - "m4.large"
+    - "m4.xlarge"
+    - "m4.2xlarge"
+    - "m4.4xlarge"
+    - "m4.10xlarge"
+    - "c1.medium"
+    - "c1.xlarge"
+    - "c3.large"
+    - "c3.xlarge"
+    - "c3.2xlarge"
+    - "c3.4xlarge"
+    - "c3.8xlarge"
+    - "c4.large"
+    - "c4.xlarge"
+    - "c4.2xlarge"
+    - "c4.4xlarge"
+    - "c4.8xlarge"
+    - "g2.2xlarge"
+    - "g2.8xlarge"
+    - "r3.large"
+    - "r3.xlarge"
+    - "r3.2xlarge"
+    - "r3.4xlarge"
+    - "r3.8xlarge"
+    - "i2.xlarge"
+    - "i2.2xlarge"
+    - "i2.4xlarge"
+    - "i2.8xlarge"
+    - "d2.xlarge"
+    - "d2.2xlarge"
+    - "d2.4xlarge"
+    - "d2.8xlarge"
+    - "hi1.4xlarge"
+    - "hs1.8xlarge"
+    - "cr1.8xlarge"
+    - "cc2.8xlarge"
+    - "cg1.4xlarge"
+
+Mappings:
+  Environments:
+    Dev:
+      Suffix: 'dev'
+    Test:
+      Suffix: 'test'
+    Prod:
+      Suffix: 'prod'
+  RegionMap:
+    ap-southeast-1:
+      AMI: ami-0b89f7b3f054b957e
+
+Resources:
+  vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 11.0.0.0/16
+      Tags:
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "vpc"]]
+  routeTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref vpc
+      Tags:
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "routeTable"]]
+  route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref routeTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref internetGateway
+  subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref vpc
+      AvailabilityZone: !Join ["", [!Ref "AWS::Region", "c"]]
+      CidrBlock: 11.0.21.0/24
+      Tags:
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "vpc", "subnet1"]]
+  subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref vpc
+      AvailabilityZone: !Join ["", [!Ref "AWS::Region", "b"]]
+      CidrBlock: 11.0.22.0/24
+      Tags:
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "vpc", "subnet2"]]
+  subnet1routeTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref routeTable
+      SubnetId: !Ref subnet1
+  internetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "vpc", "internetGw"]]
+  gatewayToInternet:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref vpc
+      InternetGatewayId: !Ref internetGateway
+  securityGroupWebServer:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Security Group for web server
+      GroupName: !Join ["-", [!Ref Environment, "webserver", "sg"]]
+      VpcId: !Ref vpc
+      SecurityGroupIngress: 
+      - CidrIp: 0.0.0.0/0
+        Description: Allow all
+        IpProtocol: "tcp"
+        FromPort: 80
+        ToPort: 80
+      - CidrIp: 0.0.0.0/0
+        Description: Allow all access SSH
+        IpProtocol: "tcp"
+        FromPort: 22
+        ToPort: 22
+  outboundAll:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: Allow all
+      GroupId: !Ref securityGroupWebServer
+      IpProtocol: "-1"
+      FromPort: -1
+      ToPort: -1
+  launchTemplateWebserver:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: launch-template-webServer
+      LaunchTemplateData:
+        ImageId: !FindInMap ["RegionMap", !Ref AWS::Region, "AMI"]
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref keyPair
+        NetworkInterfaces:
+        - DeleteOnTermination: true
+          Description: Primary network interface
+          DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref subnet1
+          Groups:
+          - !Ref securityGroupWebServer
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd.x86_64
+            systemctl start httpd.service
+            systemctl enable httpd.service
+            echo Hello World from Launch Template $(hostname -f) > /var/www/html/index.html
+  autoScalingGroup1:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Join ["-", [!Ref Environment, "asg1"]]
+      AvailabilityZones:
+      - !Join ["", [!Ref "AWS::Region", "c"]]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref launchTemplateWebserver
+        Version: !GetAtt launchTemplateWebserver.LatestVersionNumber
+      MaxSize: "1" # Required
+      MinSize: "0" # Required
+      DesiredCapacity: "0"
+      Tags:
+      - Key: Name
+        Value: !Join ["-", [!Ref Environment, "asg", "webServer"]]
+        PropagateAtLaunch: true
+  targetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/"
+      HealthCheckPort: "80"
+      HealthCheckProtocol: "HTTP"
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: "200"
+      Name: !Join ["-", [!Ref Environment, "targetGroup", "webServer"]]
+      Port: 80
+      Protocol: "HTTP"
+      ProtocolVersion: "HTTP2"
+      TargetType: "instance"
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref vpc
+
+Outputs:
+  vpcid:
+    Value: !Ref vpc
